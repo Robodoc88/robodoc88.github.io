@@ -1,0 +1,86 @@
+---
+output: pdf_document
+---
+##Peer Assessment: Prediction of Dumbbell Lifting with Data from Acceleratometers
+**Date:** August 21, 2014      
+**Author:** Michael W. Lee
+
+###Excutive Summary
+This is the Peer Assessment assignment for the Practical Machine Learning Course in Datascience course series.  The original training dataset was partitioned into `training` (60%) and `testing` (40%) datasets.  After unneeded variables were removed, 53 variables were used to build a predictive model using boosting algorithm with `gbm`.  The resulting model is highly accurate with in-sample accuracy of 98% and out of sample accuracy of 96%.  The predictions were made on 20 cases in `pml-testing` dataset as part of the assignment, and all predictions were correct. 
+
+###Introduction
+There are inexpensive devices such as *Jawbone Up, Nike FuelBand,* and *Fitbit* available commercially which collect a large amount of data about personal activity and quantify how *much* of a particular activity.  However, these devices rarely quantify *how well they do it*.  In this project, data were collected from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants.  They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.  The goal of the project is to predict the manner in which they did the exercise.
+
+###Method
+The dataset for this project was downloaded from course assignment website.  The data came from the following publication:
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. **Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements.** Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+
+```{r data, echo=TRUE, cache=TRUE}
+setwd("C:/Users/Michael/Desktop/machine")
+pml <- read.csv("pml-training.csv", header=TRUE)
+```
+The six participants were healthy male subjects aged between 20-28 years, with litttle weight lifting experience.  All participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg).  They were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+The accelerometers were attached to right arm, right forearm, belt, and dumbbell.  Measurements of acceleration, gyros and magnet(compass) were taken in X, Y, Z coordinates.  Roll, pitch and yaw were calculated from the above data.  The `pml` dataset was partitioned into `pmltrain` (60%) and `pmltest` (40%).  `pmltrain` was used for training and tuning, and `pmltest` was used only for cross validation purpose.  The `caret` package was used to perform the training.
+
+```{r partitioning, echo=TRUE, cache=TRUE}
+library(caret);library(ggplot2)
+set.seed(35353)
+inTrain <- createDataPartition(pml$classe, p = 0.6, list=FALSE)
+pmltrain <- pml[inTrain,]
+pmltest <- pml[-inTrain,]
+```
+
+The dataset contained 160 variables.  Of these 160 variables, many variables had a large numbers of `NA`'s, and therefore, these variables were not used.  User name and time stamps were irrelevant in generalizability of the prediction, so they were not used.  Remaining 53 variables had complete data and were used for the project.  The summary of these 53 variables is listed below.
+
+```{r preprocess, echo=TRUE, cache=TRUE}
+training <- pmltrain[, c(8,9,10,11,37:49,60:68,84:86,102,113:124,140,151:160)]
+testing <- pmltest[, c(8,9,10,11,37:49,60:68,84:86,102,113:124,140,151:160)]
+summary(training)
+```
+
+The outcome variable `classe` contains 5 factors - `A`,`B`,`C`,`D`, and `E`.  Because the outcome is classification to one of these 5 factors, classification decision tree would be the best algorithm to use for this project.
+
+When `rpart` algorithm was used with default settings, `D` could not be classified.  The in-sample accuracy was 52%, and it was not good enough.  When `rpart` algorithm with `control = rpart.control(minsplit=30, cp=0.001)` was used, the in-sample accuracy improved to 92%, but in-sample sensitivity of `B` and `C` were only 88%. The out of sample accuracy was only 33%. (data not shown)  Therefore, recursive partition and regression algorithm is not adequate.
+
+When `random forest` algorithm was used, there was not enough memory in my computer, and due to the large number of variables and observations, it crashed.
+
+Finally, boosting algorithm with `gbm` was used with default settings.
+
+```{r gbm, echo=TRUE, cache=TRUE}
+model1 <- train(classe ~., data=training, method="gbm", verbose = FALSE)
+```
+
+###Results
+The relative influence of the variables are listed below.  `roll_belt`, `pitch_forearm`, `yaw_belt`, `magnet_dumbbell_z`, `magnet_dumbbell_y`, and `roll_forearm` have the most influence in the prediction model.
+
+```{r model1, echo=TRUE, cache=TRUE}
+summary(model1)
+```
+
+In-sample accuracy is 98% with sensitivity of the prediction > 95% and specificity > 99%. Out of sample accuracy is expected to be lower than 98%.
+```{r in_sample, echo=TRUE, cache=TRUE}
+inPred <- predict(model1)
+confusionMatrix(training$classe, inPred)
+```
+
+After cross validation, out of sample accuracy is 96% with sensitivity of the prediction > 92% and specificity > 98%.  Out of sample accuracy is only slightly lower than in-sample accuracy.
+
+```{r out_sample, echo=TRUE, cache=TRUE}
+outPred <- predict(model1, newdata=testing)
+confusionMatrix(testing$classe, outPred)
+```
+
+###Testing on the test set
+The testing dataset consists of 20 observations.  It is loaded and processed the same way as the training set.
+
+```{r testing, echo=TRUE, cache=TRUE}
+Testset <- read.csv("pml-testing.csv", header=TRUE)
+Test <- Testset[, c(8,9,10,11,37:49,60:68,84:86,102,113:124,140,151:160)]
+TestResult <- predict(model1, newdata=Test)
+TestResult
+```
+
+Based on the current model, prediction of all 20 cases were correct.
+
